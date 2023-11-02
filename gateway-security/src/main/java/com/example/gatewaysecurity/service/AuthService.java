@@ -3,19 +3,20 @@ package com.example.gatewaysecurity.service;
 import com.example.gatewaysecurity.enums.Role;
 import com.example.gatewaysecurity.enums.TokenType;
 import com.example.gatewaysecurity.model.*;
+import com.example.gatewaysecurity.repository.RefreshTokenRepository;
 import com.example.gatewaysecurity.repository.TokenRepository;
 import com.example.gatewaysecurity.repository.UserRepository;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 
+import org.springframework.http.MediaType;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.server.ServerRequest;
+import org.springframework.web.reactive.function.server.ServerResponse;
+import reactor.core.publisher.Mono;
 
-import java.io.IOException;
 import java.util.NoSuchElementException;
 
 @Service
@@ -24,6 +25,7 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final TokenRepository tokenRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
     private final JwtService jwtService;
 
@@ -41,6 +43,7 @@ public class AuthService {
         var jwtToken = jwtService.generateToken(user);
         var refreshToken = jwtService.generateRefreshToken(user);
         saveUserToken(user, jwtToken);
+        saveRefreshUserToken(user,refreshToken);
 
         return AuthResponse.builder()
                 .accessToken(jwtToken)
@@ -59,6 +62,17 @@ public class AuthService {
         tokenRepository.save(token);
     }
 
+    private void saveRefreshUserToken(User user, String jwtToken) {
+        var token = RefreshToken.builder()
+                .user(user)
+                .token(jwtToken)
+                .tokenType(TokenType.BEARER)
+                .expired(false)
+                .revoked(false)
+                .build();
+        refreshTokenRepository.save(token);
+    }
+
     private void revokeAllUserTokens(User user) {
         var validTokens = tokenRepository.findAllTokensByUser(user.getId());
         if (validTokens.isEmpty()) return;
@@ -69,6 +83,16 @@ public class AuthService {
         tokenRepository.saveAll(validTokens);
     }
 
+    private void revokeAllRefreshUserTokens(User user) {
+        var validTokens = refreshTokenRepository.findAllTokensByUser(user.getId());
+        if (validTokens.isEmpty()) return;
+        validTokens.forEach(token -> {
+            token.setRevoked(true);
+            token.setExpired(true);
+        });
+        refreshTokenRepository.saveAll(validTokens);
+    }
+
 
     public AuthResponse authenticate(AuthRequest request) {
         var user = userRepository.findByEmail(request.getEmail()).orElseThrow(() -> new NoSuchElementException("User not found"));
@@ -77,9 +101,11 @@ public class AuthService {
         boolean isPasswordValid = passwordEncoder.matches(request.getPassword(), user.getPassword());
         if (isPasswordValid) {
             revokeAllUserTokens(user);
+            revokeAllRefreshUserTokens(user);
             var jwtToken = jwtService.generateToken(user);
             var refreshToken = jwtService.generateRefreshToken(user);
             saveUserToken(user, jwtToken);
+            saveRefreshUserToken(user,refreshToken);
 
             return AuthResponse.builder()
                     .accessToken(jwtToken)
@@ -91,28 +117,45 @@ public class AuthService {
     }
 
 
-    public void refreshToken(HttpServletRequest request, HttpServletResponse response) throws IOException {
-        final String authHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
-        final String refreshToken;
-        final String userEmail;
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            return;
-        }
-        refreshToken = authHeader.substring(7);
-        userEmail = jwtService.extractUserName(refreshToken);
-        if (userEmail != null) {
-            User user = userRepository.findByEmail(userEmail).orElseThrow();
 
-            if (jwtService.isTokenValid(refreshToken, user)) {
-                String accessToken = jwtService.generateToken(user);
-                revokeAllUserTokens(user);
-                saveUserToken(user, accessToken);
-                AuthResponse authResponse = AuthResponse.builder()
-                        .accessToken(accessToken)
-                        .refreshToken(refreshToken)
-                        .build();
-                new ObjectMapper().writeValue(response.getOutputStream(), authResponse);
-            }
-        }
+    public Mono<ServerResponse> refreshToken(ServerRequest request) {
+        return request.headers().header(HttpHeaders.AUTHORIZATION)
+                .stream()
+                .findFirst()
+                .map(authHeader -> {
+                    if (!authHeader.startsWith("Bearer ")) {
+                        return ServerResponse.badRequest().build();
+                    }
+                    String refreshToken = authHeader.substring(7);
+                    String userEmail = jwtService.extractUserName(refreshToken);
+
+                    if (userEmail != null) {
+                        User user = userRepository.findByEmail(userEmail).orElseThrow();
+
+                        boolean isTokenValid = refreshTokenRepository.findByToken(refreshToken)
+                                .map(token -> !token.getExpired() && !token.getRevoked())
+                                .orElse(false);
+
+                        if (jwtService.isTokenValid(refreshToken, user) && isTokenValid) {
+                            String accessToken = jwtService.generateToken(user);
+                            revokeAllUserTokens(user);
+                            saveUserToken(user, accessToken);
+
+                            AuthResponse authResponse = AuthResponse.builder()
+                                    .accessToken(accessToken)
+                                    .refreshToken(refreshToken)
+                                    .build();
+
+                            return ServerResponse.ok()
+                                    .contentType(MediaType.APPLICATION_JSON)
+                                    .bodyValue(authResponse);
+                        }
+                    }
+
+                    return ServerResponse.badRequest().build();
+                })
+                .orElse(ServerResponse.badRequest().build());
     }
+
+
 }
