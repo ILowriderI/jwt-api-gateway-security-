@@ -6,6 +6,8 @@ import com.example.gatewaysecurity.model.*;
 import com.example.gatewaysecurity.repository.RefreshTokenRepository;
 import com.example.gatewaysecurity.repository.TokenRepository;
 import com.example.gatewaysecurity.repository.UserRepository;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 
@@ -156,6 +158,59 @@ public class AuthService {
                 })
                 .orElse(ServerResponse.badRequest().build());
     }
+
+//    public void logout(HttpServletRequest request) {
+//
+//        final String authHeader = request.getHeader("Authorization");
+//        final String jwt;
+//        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+//            return;
+//        }
+//        jwt = authHeader.substring(7);
+//        boolean isTokenValid = tokenRepository.findByToken(jwt)
+//                .map(token -> !token.getExpired() && !token.getRevoked())
+//                .orElse(false);
+//        User user = userRepository.findByEmail(jwtService.extractUserName(jwt)).orElseThrow(() -> new NoSuchElementException("User not found"));
+//
+//        if(isTokenValid && jwtService.isTokenValid(jwt, user)){
+//           revokeAllRefreshUserTokens(user);
+//           revokeAllUserTokens(user);
+//        }else {
+//            throw new IllegalArgumentException("Invalid access");
+//        }
+//
+//    }
+
+
+
+
+    public Mono<ServerResponse> logout(ServerRequest request) {
+        return request.headers().header(HttpHeaders.AUTHORIZATION)
+                .stream()
+                .findFirst()
+                .map(authHeader -> {
+                    if (!authHeader.startsWith("Bearer ")) {
+                        return ServerResponse.badRequest().build();
+                    }
+                    String jwt = authHeader.substring(7);
+                    boolean isTokenValid = tokenRepository.findByToken(jwt)
+                            .map(token -> !token.getExpired() && !token.getRevoked())
+                            .orElse(false);
+
+                    String userEmail = jwtService.extractUserName(jwt);
+                    User user = userRepository.findByEmail(userEmail).orElse(null);
+
+                    if (user != null && isTokenValid && jwtService.isTokenValid(jwt, user)) {
+                        revokeAllRefreshUserTokens(user);
+                        revokeAllUserTokens(user);
+                        return ServerResponse.ok().build();
+                    } else {
+                        return ServerResponse.badRequest().build();
+                    }
+                })
+                .orElse(ServerResponse.badRequest().build());
+    }
+
 
 
 }
