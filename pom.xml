@@ -19,6 +19,7 @@
         <module>gateway-security</module>
         <module>sample-service</module>
         <module>secured-service</module>
+        <module>chat-service</module>
     </modules>
 
 <dependencies>

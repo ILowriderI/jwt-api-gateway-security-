@@ -6,11 +6,10 @@ import com.example.gatewaysecurity.model.*;
 import com.example.gatewaysecurity.repository.RefreshTokenRepository;
 import com.example.gatewaysecurity.repository.TokenRepository;
 import com.example.gatewaysecurity.repository.UserRepository;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -32,26 +31,53 @@ public class AuthService {
     private final JwtService jwtService;
 
 
-    public AuthResponse register(RegisterRequest request) {
+//    public AuthResponse register(RegisterRequest request) {
+//
+//        var user = User.builder()
+//                .firstname(request.getFirstname())
+//                .lastname(request.getLastname())
+//                .email(request.getEmail())
+//                .password(passwordEncoder.encode(request.getPassword()))
+//                .role(Role.USER)
+//                .build();
+//        userRepository.save(user);
+//        var jwtToken = jwtService.generateToken(user);
+//        var refreshToken = jwtService.generateRefreshToken(user);
+//        saveUserToken(user, jwtToken);
+//        saveRefreshUserToken(user,refreshToken);
+//
+//        return AuthResponse.builder()
+//                .accessToken(jwtToken)
+//                .refreshToken(refreshToken)
+//                .build();
+//    }
 
-        var user = User.builder()
-                .firstname(request.getFirstname())
-                .lastname(request.getLastname())
-                .email(request.getEmail())
-                .password(passwordEncoder.encode(request.getPassword()))
-                .role(Role.USER)
-                .build();
-        userRepository.save(user);
-        var jwtToken = jwtService.generateToken(user);
-        var refreshToken = jwtService.generateRefreshToken(user);
-        saveUserToken(user, jwtToken);
-        saveRefreshUserToken(user,refreshToken);
+    public Mono<ServerResponse> register(ServerRequest request) {
 
-        return AuthResponse.builder()
-                .accessToken(jwtToken)
-                .refreshToken(refreshToken)
-                .build();
+        Mono<RegisterRequest> registerRequestMono = request.bodyToMono(RegisterRequest.class);
+
+        return registerRequestMono.flatMap(registerRequest -> {
+            var user = User.builder()
+                    .firstname(registerRequest.getFirstname())
+                    .lastname(registerRequest.getLastname())
+                    .email(registerRequest.getEmail())
+                    .password(passwordEncoder.encode(registerRequest.getPassword()))
+                    .role(Role.USER)
+                    .build();
+            userRepository.save(user);
+            var jwtToken = jwtService.generateToken(user);
+            var refreshToken = jwtService.generateRefreshToken(user);
+            saveUserToken(user, jwtToken);
+            saveRefreshUserToken(user, refreshToken);
+
+            // Возвращение ответа
+            return ServerResponse.ok().bodyValue(AuthResponse.builder()
+                    .accessToken(jwtToken)
+                    .refreshToken(refreshToken)
+                    .build());
+        });
     }
+
 
     private void saveUserToken(User user, String jwtToken) {
         var token = Token.builder()
@@ -96,27 +122,54 @@ public class AuthService {
     }
 
 
-    public AuthResponse authenticate(AuthRequest request) {
-        var user = userRepository.findByEmail(request.getEmail()).orElseThrow(() -> new NoSuchElementException("User not found"));
+//    public AuthResponse authenticate(AuthRequest request) {
+//        var user = userRepository.findByEmail(request.getEmail()).orElseThrow(() -> new NoSuchElementException("User not found"));
+//
+//
+//        boolean isPasswordValid = passwordEncoder.matches(request.getPassword(), user.getPassword());
+//        if (isPasswordValid) {
+//            revokeAllUserTokens(user);
+//            revokeAllRefreshUserTokens(user);
+//            var jwtToken = jwtService.generateToken(user);
+//            var refreshToken = jwtService.generateRefreshToken(user);
+//            saveUserToken(user, jwtToken);
+//            saveRefreshUserToken(user,refreshToken);
+//
+//            return AuthResponse.builder()
+//                    .accessToken(jwtToken)
+//                    .refreshToken(refreshToken)
+//                    .build();
+//        } else {
+//            throw new IllegalArgumentException("Invalid password");
+//        }
+//    }
 
+    public Mono<ServerResponse> authenticate(ServerRequest request) {
+        Mono<AuthRequest> authRequestMono = request.bodyToMono(AuthRequest.class);
 
-        boolean isPasswordValid = passwordEncoder.matches(request.getPassword(), user.getPassword());
-        if (isPasswordValid) {
-            revokeAllUserTokens(user);
-            revokeAllRefreshUserTokens(user);
-            var jwtToken = jwtService.generateToken(user);
-            var refreshToken = jwtService.generateRefreshToken(user);
-            saveUserToken(user, jwtToken);
-            saveRefreshUserToken(user,refreshToken);
+        return authRequestMono.flatMap(authRequest -> {
+            var user = userRepository.findByEmail(authRequest.getEmail())
+                    .orElseThrow(() -> new NoSuchElementException("User not found"));
 
-            return AuthResponse.builder()
-                    .accessToken(jwtToken)
-                    .refreshToken(refreshToken)
-                    .build();
-        } else {
-            throw new IllegalArgumentException("Invalid password");
-        }
+            boolean isPasswordValid = passwordEncoder.matches(authRequest.getPassword(), user.getPassword());
+            if (isPasswordValid) {
+                revokeAllUserTokens(user);
+                revokeAllRefreshUserTokens(user);
+                var jwtToken = jwtService.generateToken(user);
+                var refreshToken = jwtService.generateRefreshToken(user);
+                saveUserToken(user, jwtToken);
+                saveRefreshUserToken(user, refreshToken);
+
+                return ServerResponse.ok().bodyValue(AuthResponse.builder()
+                        .accessToken(jwtToken)
+                        .refreshToken(refreshToken)
+                        .build());
+            } else {
+                return ServerResponse.status(HttpStatus.UNAUTHORIZED).build();
+            }
+        });
     }
+
 
 
 
@@ -158,29 +211,6 @@ public class AuthService {
                 })
                 .orElse(ServerResponse.badRequest().build());
     }
-
-//    public void logout(HttpServletRequest request) {
-//
-//        final String authHeader = request.getHeader("Authorization");
-//        final String jwt;
-//        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-//            return;
-//        }
-//        jwt = authHeader.substring(7);
-//        boolean isTokenValid = tokenRepository.findByToken(jwt)
-//                .map(token -> !token.getExpired() && !token.getRevoked())
-//                .orElse(false);
-//        User user = userRepository.findByEmail(jwtService.extractUserName(jwt)).orElseThrow(() -> new NoSuchElementException("User not found"));
-//
-//        if(isTokenValid && jwtService.isTokenValid(jwt, user)){
-//           revokeAllRefreshUserTokens(user);
-//           revokeAllUserTokens(user);
-//        }else {
-//            throw new IllegalArgumentException("Invalid access");
-//        }
-//
-//    }
-
 
 
 

@@ -14,7 +14,8 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 
-public class JwtAuthFilter extends AbstractGatewayFilterFactory<JwtAuthFilter.Config> {
+
+public class JwtAuthFilter extends AbstractGatewayFilterFactory<com.example.gatewaysecurity.config.JwtAuthFilter.Config> {
 
     private final TokenRepository tokenRepository;
 

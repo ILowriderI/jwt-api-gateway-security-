@@ -1,0 +1,16 @@
+
+server:
+  port: 8083
+
+spring:
+  jpa:
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+  datasource:
+    url: jdbc:postgresql://localhost:5432/dev-security
+    username: postgres
+    password: student123

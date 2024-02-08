@@ -8,6 +8,7 @@ import org.springframework.context.annotation.Configuration;
 
 @Configuration
 @RequiredArgsConstructor
+
 public class GatewayConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
