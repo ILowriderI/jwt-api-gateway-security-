@@ -31,26 +31,7 @@ public class AuthService {
     private final JwtService jwtService;
 
 
-//    public AuthResponse register(RegisterRequest request) {
-//
-//        var user = User.builder()
-//                .firstname(request.getFirstname())
-//                .lastname(request.getLastname())
-//                .email(request.getEmail())
-//                .password(passwordEncoder.encode(request.getPassword()))
-//                .role(Role.USER)
-//                .build();
-//        userRepository.save(user);
-//        var jwtToken = jwtService.generateToken(user);
-//        var refreshToken = jwtService.generateRefreshToken(user);
-//        saveUserToken(user, jwtToken);
-//        saveRefreshUserToken(user,refreshToken);
-//
-//        return AuthResponse.builder()
-//                .accessToken(jwtToken)
-//                .refreshToken(refreshToken)
-//                .build();
-//    }
+
 
     public Mono<ServerResponse> register(ServerRequest request) {
 
@@ -70,7 +51,7 @@ public class AuthService {
             saveUserToken(user, jwtToken);
             saveRefreshUserToken(user, refreshToken);
 
-            // Возвращение ответа
+         
             return ServerResponse.ok().bodyValue(AuthResponse.builder()
                     .accessToken(jwtToken)
                     .refreshToken(refreshToken)
@@ -122,27 +103,7 @@ public class AuthService {
     }
 
 
-//    public AuthResponse authenticate(AuthRequest request) {
-//        var user = userRepository.findByEmail(request.getEmail()).orElseThrow(() -> new NoSuchElementException("User not found"));
-//
-//
-//        boolean isPasswordValid = passwordEncoder.matches(request.getPassword(), user.getPassword());
-//        if (isPasswordValid) {
-//            revokeAllUserTokens(user);
-//            revokeAllRefreshUserTokens(user);
-//            var jwtToken = jwtService.generateToken(user);
-//            var refreshToken = jwtService.generateRefreshToken(user);
-//            saveUserToken(user, jwtToken);
-//            saveRefreshUserToken(user,refreshToken);
-//
-//            return AuthResponse.builder()
-//                    .accessToken(jwtToken)
-//                    .refreshToken(refreshToken)
-//                    .build();
-//        } else {
-//            throw new IllegalArgumentException("Invalid password");
-//        }
-//    }
+
 
     public Mono<ServerResponse> authenticate(ServerRequest request) {
         Mono<AuthRequest> authRequestMono = request.bodyToMono(AuthRequest.class);
